@@ -23,7 +23,7 @@
 class Search : public DatabaseCommand
 {
 public:
-    Search();
+    explicit Search(bool interactive = false);
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
 };

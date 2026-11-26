@@ -7950,6 +7950,10 @@ Do you want to overwrite it?</source>
         <translation><numerusform>在 %1 秒后清空剪贴板...</numerusform></translation>
     </message>
     <message>
+        <source>Press Enter to clear now.</source>
+        <translation>按 Enter 立即清空。</translation>
+    </message>
+    <message>
         <source>Clipboard cleared!</source>
         <translation>剪贴板已清空！</translation>
     </message>

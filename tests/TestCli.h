@@ -68,6 +68,8 @@ private slots:
     void testNoPasswordOption();
     void testHelp();
     void testInteractiveCommands();
+    void testInteractiveCompletion();
+    void testInteractiveDirectories();
     void testList();
     void testMerge();
     void testMergeWithKeys();

@@ -23,7 +23,7 @@
 class List : public DatabaseCommand
 {
 public:
-    List();
+    explicit List(bool interactive = false);
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
 

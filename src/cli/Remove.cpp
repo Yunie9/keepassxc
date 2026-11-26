@@ -17,6 +17,7 @@
 
 #include "Remove.h"
 
+#include "RemoveGroup.h"
 #include "Utils.h"
 #include "core/Global.h"
 #include "core/Group.h"
@@ -24,11 +25,19 @@
 
 #include <QCommandLineParser>
 
-Remove::Remove()
+static const QCommandLineOption recursiveOption({"r", "R", "recursive"},
+                                                QObject::tr("Remove a group and all its contents."));
+
+Remove::Remove(bool interactive)
 {
     name = QString("rm");
     description = QString("Remove an entry from the database.");
-    positionalArguments.append({QString("entry"), QObject::tr("Path of the entry to remove."), QString("")});
+    if (interactive) {
+        options.append(recursiveOption);
+        positionalArguments.append({"path", QObject::tr("Path of the entry or group to remove."), ""});
+    } else {
+        positionalArguments.append({"entry", QObject::tr("Path of the entry to remove."), ""});
+    }
 }
 
 int Remove::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<QCommandLineParser> parser)
@@ -36,9 +45,20 @@ int Remove::executeWithDatabase(QSharedPointer<Database> database, QSharedPointe
     auto& out = parser->isSet(Command::QuietOption) ? Utils::DEVNULL : Utils::STDOUT;
     auto& err = Utils::STDERR;
 
-    auto entryPath = parser->positionalArguments().at(1);
-    QPointer<Entry> entry = database->rootGroup()->findEntryByPath(entryPath);
+    const auto source = parser->positionalArguments().at(1);
+    const auto entryPath = databasePath(source);
+    auto* root = database->rootGroup();
+    QPointer<Entry> entry = workingGroup && source.endsWith('/') ? nullptr : root->findEntryByPath(entryPath);
     if (!entry) {
+        if (workingGroup) {
+            if (auto* group = root->findGroupByPath(entryPath)) {
+                if (parser->isSet(recursiveOption)) {
+                    return RemoveGroup::removeGroup(*database, group, entryPath, out);
+                }
+                err << QObject::tr("%1 is a group. Use rm -r to remove it recursively.").arg(entryPath) << Qt::endl;
+                return EXIT_FAILURE;
+            }
+        }
         err << QObject::tr("Entry %1 not found.").arg(entryPath) << Qt::endl;
         return EXIT_FAILURE;
     }

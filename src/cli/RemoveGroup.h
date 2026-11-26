@@ -20,6 +20,8 @@
 
 #include "DatabaseCommand.h"
 
+class QTextStream;
+
 class RemoveGroup : public DatabaseCommand
 {
 public:
@@ -27,6 +29,7 @@ public:
     ~RemoveGroup() override;
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
+    static int removeGroup(Database& database, Group* group, const QString& groupPath, QTextStream& out);
 };
 
 #endif // KEEPASSXC_REMOVEGROUP_H

@@ -38,31 +38,40 @@ int RemoveGroup::executeWithDatabase(QSharedPointer<Database> database, QSharedP
     auto& out = parser->isSet(Command::QuietOption) ? Utils::DEVNULL : Utils::STDOUT;
     auto& err = Utils::STDERR;
 
-    QString groupPath = parser->positionalArguments().at(1);
+    const auto groupPath = databasePath(parser->positionalArguments().at(1));
 
-    // Recursive option means were looking for a group to remove.
-    QPointer<Group> group = database->rootGroup()->findGroupByPath(groupPath);
+    auto* group = database->rootGroup()->findGroupByPath(groupPath);
     if (!group) {
         err << QObject::tr("Group %1 not found.").arg(groupPath) << Qt::endl;
         return EXIT_FAILURE;
     }
 
-    if (group == database->rootGroup()) {
+    if (workingGroup && (!group->entries().isEmpty() || !group->children().isEmpty())) {
+        err << QObject::tr("Group %1 is not empty.").arg(groupPath) << Qt::endl;
+        return EXIT_FAILURE;
+    }
+    return removeGroup(*database, group, groupPath, out);
+}
+
+int RemoveGroup::removeGroup(Database& database, Group* group, const QString& groupPath, QTextStream& out)
+{
+    auto& err = Utils::STDERR;
+    if (group == database.rootGroup()) {
         err << QObject::tr("Cannot remove root group from database.") << Qt::endl;
         return EXIT_FAILURE;
     }
 
     bool recycled = true;
-    auto* recycleBin = database->metadata()->recycleBin();
-    if (!database->metadata()->recycleBinEnabled() || (recycleBin && recycleBin->findGroupByUuid(group->uuid()))) {
+    auto* recycleBin = database.metadata()->recycleBin();
+    if (!database.metadata()->recycleBinEnabled() || (recycleBin && recycleBin->findGroupByUuid(group->uuid()))) {
         delete group;
         recycled = false;
     } else {
-        database->recycleGroup(group);
+        database.recycleGroup(group);
     };
 
     QString errorMessage;
-    if (!database->save(Database::Atomic, {}, &errorMessage)) {
+    if (!database.save(Database::Atomic, {}, &errorMessage)) {
         err << QObject::tr("Unable to save database to file: %1").arg(errorMessage) << Qt::endl;
         return EXIT_FAILURE;
     }

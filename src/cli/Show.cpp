@@ -17,11 +17,25 @@
 
 #include "Show.h"
 
+#include "Clip.h"
 #include "Utils.h"
 #include "core/Group.h"
 #include "core/Tools.h"
 
 #include <QCommandLineParser>
+
+namespace
+{
+    const QCommandLineOption CopyOption({"c", "copy"}, QObject::tr("Copy the password to the clipboard."));
+    const QCommandLineOption CopyAttributeOption(
+        QStringLiteral("copy-attribute"),
+        QObject::tr("Copy the given attribute to the clipboard (use totp for TOTP)."),
+        "attribute");
+    const QCommandLineOption TimeoutOption(
+        QStringLiteral("timeout"),
+        QObject::tr("Clipboard clear timeout in seconds (default: %1, 0 for unlimited).").arg(Clip::DefaultTimeout),
+        "seconds");
+} // namespace
 
 const QCommandLineOption Show::TotpOption =
     QCommandLineOption(QStringList() << "t" << "totp", QObject::tr("Show the entry's current TOTP."));
@@ -53,6 +67,9 @@ Show::Show()
     options.append(Show::ProtectedAttributesOption);
     options.append(Show::AllAttributesOption);
     options.append(Show::AttachmentsOption);
+    options.append(CopyOption);
+    options.append(CopyAttributeOption);
+    options.append(TimeoutOption);
     positionalArguments.append({QString("entry"), QObject::tr("Name of the entry to show."), QString("")});
 }
 
@@ -60,9 +77,30 @@ int Show::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
 {
     auto& out = Utils::STDOUT;
     auto& err = Utils::STDERR;
+    const bool colors = workingGroup && Utils::terminalColorsEnabled();
+    const auto fieldLabel = [colors](const QString& name) {
+        return Utils::colorize(name + ':', Utils::TerminalColor::Cyan, colors) + ' ';
+    };
+
+    const bool copyAttribute = parser->isSet(CopyAttributeOption);
+    const bool copy = parser->isSet(CopyOption) || copyAttribute;
+    auto timeout = Clip::DefaultTimeout;
+    if (parser->isSet(TimeoutOption)) {
+        if (!copy) {
+            err << QObject::tr("--timeout requires --copy or --copy-attribute.") << Qt::endl;
+            return EXIT_FAILURE;
+        }
+        const auto timeoutValue = parser->value(TimeoutOption);
+        bool ok;
+        timeout = timeoutValue.toInt(&ok);
+        if (!ok) {
+            err << QObject::tr("Invalid timeout value %1.").arg(timeoutValue) << Qt::endl;
+            return EXIT_FAILURE;
+        }
+    }
 
     const QStringList args = parser->positionalArguments();
-    const QString& entryPath = args.at(1);
+    const auto entryPath = databasePath(args.at(1));
     bool showTotp = parser->isSet(Show::TotpOption);
     bool showProtectedAttributes = parser->isSet(Show::ProtectedAttributesOption);
     bool showAllAttributes = parser->isSet(Show::AllAttributesOption);
@@ -108,7 +146,7 @@ int Show::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
     for (const QString& attributeName : asConst(attributes)) {
         if (Utils::EntryFieldNames.contains(attributeName)) {
             if (!attributesWereSpecified) {
-                out << attributeName << ": ";
+                out << fieldLabel(attributeName);
             }
             out << Utils::getTopLevelField(entry, attributeName) << Qt::endl;
             continue;
@@ -128,10 +166,10 @@ int Show::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
         }
         QString canonicalName = attrs[0];
         if (!attributesWereSpecified) {
-            out << canonicalName << ": ";
+            out << fieldLabel(canonicalName);
         }
         if (entry->attributes()->isProtected(canonicalName) && !attributesWereSpecified && !showProtectedAttributes) {
-            out << "PROTECTED" << Qt::endl;
+            out << Utils::colorize("PROTECTED", Utils::TerminalColor::Yellow, colors) << Qt::endl;
         } else {
             out << entry->resolveMultiplePlaceholders(entry->attributes()->value(canonicalName)) << Qt::endl;
         }
@@ -145,7 +183,7 @@ int Show::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
         if (attachments->isEmpty()) {
             out << QObject::tr("No attachments present.") << Qt::endl;
         } else {
-            out << QObject::tr("Attachments:") << Qt::endl;
+            out << Utils::colorize(QObject::tr("Attachments:"), Utils::TerminalColor::Cyan, colors) << Qt::endl;
 
             // Iterate over the attachments and output their names and size line-by-line, indented.
             for (const QString& attachmentName : attachments->keys()) {
@@ -160,5 +198,13 @@ int Show::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
         out << entry->totp() << Qt::endl;
     }
 
-    return encounteredError ? EXIT_FAILURE : EXIT_SUCCESS;
+    if (encounteredError) {
+        return EXIT_FAILURE;
+    }
+    if (copy) {
+        const auto attribute = copyAttribute ? parser->value(CopyAttributeOption) : QStringLiteral("password");
+        return Clip::copyAttribute(
+            *entry, entryPath, attribute, timeout, workingGroup, parser->isSet(Command::QuietOption));
+    }
+    return EXIT_SUCCESS;
 }

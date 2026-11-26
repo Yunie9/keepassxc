@@ -44,6 +44,7 @@
 #include "cli/Generate.h"
 #include "cli/Help.h"
 #include "cli/Import.h"
+#include "cli/InteractiveCompletion.h"
 #include "cli/List.h"
 #include "cli/Merge.h"
 #include "cli/Move.h"
@@ -260,6 +261,7 @@ void TestCli::testInteractiveCommands()
     QVERIFY(Commands::getCommand("attachment-import"));
     QVERIFY(Commands::getCommand("attachment-rm"));
     QVERIFY(Commands::getCommand("clip"));
+    QVERIFY(Commands::getCommand("cd"));
     QVERIFY(Commands::getCommand("close"));
     QVERIFY(Commands::getCommand("db-create"));
     QVERIFY(Commands::getCommand("db-info"));
@@ -274,13 +276,14 @@ void TestCli::testInteractiveCommands()
     QVERIFY(Commands::getCommand("mkdir"));
     QVERIFY(Commands::getCommand("mv"));
     QVERIFY(Commands::getCommand("open"));
+    QVERIFY(Commands::getCommand("pwd"));
     QVERIFY(Commands::getCommand("quit"));
     QVERIFY(Commands::getCommand("rm"));
     QVERIFY(Commands::getCommand("rmdir"));
     QVERIFY(Commands::getCommand("show"));
     QVERIFY(Commands::getCommand("search"));
     QVERIFY(!Commands::getCommand("doesnotexist"));
-    QCOMPARE(Commands::getCommands().size(), 26);
+    QCOMPARE(Commands::getCommands().size(), 28);
 }
 
 void TestCli::testAdd()
@@ -2379,6 +2382,107 @@ void TestCli::testTextStream_data()
     QTest::newRow("System") << "System" << QStringConverter::System;
 }
 
+void TestCli::testInteractiveCompletion()
+{
+    Commands::setupCommands(true);
+    auto database = QSharedPointer<Database>::create();
+    auto* root = database->rootGroup();
+    auto* group = new Group();
+    group->setName("Logins");
+    group->setParent(root);
+    auto* work = root->addEntryWithPath("/Logins/GitHub Work");
+    auto* other = root->addEntryWithPath("/GitHub Personal");
+    auto* quoted = root->addEntryWithPath(QString::fromUtf8("/Logins/中文 \"引号\""));
+    QVERIFY(work);
+    QVERIFY(other);
+    QVERIFY(quoted);
+    work->attributes()->set("API Key", "example");
+
+    const auto complete = [&](const QString& line) {
+        return completeInteractiveCommand(line, line.size(), group);
+    };
+    QCOMPARE(complete("sh").matches, QStringList({"show"}));
+    QCOMPARE(complete("clip --att").matches, QStringList({"--attribute"}));
+    QCOMPARE(complete("clip -a User").matches, QStringList({"UserName"}));
+    QCOMPARE(complete("show --attributes=User").matches, QStringList({"--attributes=UserName"}));
+    QCOMPARE(complete("show --copy-at").matches, QStringList({"--copy-attribute"}));
+    QCOMPARE(complete("show --copy-attribute to").matches, QStringList({"totp"}));
+    QCOMPARE(complete("show \"GitHub Work\" --copy-attribute API").matches, QStringList({"API Key"}));
+    QCOMPARE(complete("show -c --timeout 0 Git").matches, QStringList({"GitHub Work"}));
+    QCOMPARE(complete("clip -a Username Git").matches, QStringList({"GitHub Work"}));
+    QCOMPARE(complete("clip ../Git").matches, QStringList({"../GitHub Personal"}));
+    QCOMPARE(complete("clip /Git").matches, QStringList({"/GitHub Personal"}));
+    QVERIFY(complete("clip work").matches.isEmpty());
+    QVERIFY(complete("cd Git").matches.isEmpty());
+    QCOMPARE(complete("cd /Log").matches, QStringList({"/Logins/"}));
+    QCOMPARE(complete("ls ./Git").matches, QStringList({"./GitHub Work"}));
+    QCOMPARE(complete("add ../Log").matches, QStringList({"../Logins/"}));
+    QCOMPARE(complete("search Git ../Log").matches, QStringList({"../Logins/"}));
+    QVERIFY(complete("cd /Log").continuePath);
+
+    const auto line = QString::fromUtf8("show \"/Logins/中x\" -a Username");
+    const auto middle = completeInteractiveCommand(line, line.indexOf('x'), group);
+    QCOMPARE(middle.matches, QStringList({quoted->path().prepend('/')}));
+    QCOMPARE(line.mid(middle.start, middle.end - middle.start), QString::fromUtf8("\"/Logins/中x\""));
+
+    const auto withoutDatabase = QString("clip Git");
+    QVERIFY(completeInteractiveCommand(withoutDatabase, withoutDatabase.size(), nullptr).matches.isEmpty());
+    work->setTitle("Renamed");
+    QVERIFY(complete("clip Git").matches.isEmpty());
+    QCOMPARE(complete("clip Ren").matches, QStringList({"Renamed"}));
+}
+
+void TestCli::testInteractiveDirectories()
+{
+    Commands::setupCommands(true);
+    const auto database = readDatabase();
+    QVERIFY(database);
+    auto* root = database->rootGroup();
+    auto* directory = root;
+    const auto run = [&](const QStringList& args) {
+        auto command = Commands::getCommand(args.first());
+        command->currentDatabase = database;
+        command->workingGroup = directory;
+        const int result = execCmd(*command, args);
+        if (args.first() == "cd") {
+            directory = command->workingGroup;
+        }
+        command->workingGroup = nullptr;
+        command->currentDatabase.reset();
+        return result;
+    };
+
+    QCOMPARE(run({"mkdir", "Work"}), EXIT_SUCCESS);
+    QCOMPARE(run({"mkdir", "/Other"}), EXIT_SUCCESS);
+    QCOMPARE(run({"add", "-u", "at-root", "Example"}), EXIT_SUCCESS);
+    QCOMPARE(run({"cd", "/Work"}), EXIT_SUCCESS);
+    QCOMPARE(run({"pwd"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("/Work\n"));
+    QCOMPARE(run({"add", "-u", "at-work", "./Example"}), EXIT_SUCCESS);
+    QCOMPARE(run({"show", "-a", "UserName", "Example"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("at-work\n"));
+    QCOMPARE(run({"show", "-a", "UserName", "../Example"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("at-root\n"));
+    QCOMPARE(run({"ls"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("Example\n"));
+    QCOMPARE(run({"search", "Example"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("/Work/Example\n"));
+    QCOMPARE(run({"rmdir", "."}), EXIT_FAILURE);
+    QCOMPARE(run({"mv", "Example", "../Example"}), EXIT_FAILURE);
+    QCOMPARE(run({"mv", "Example", "../Other/Renamed"}), EXIT_SUCCESS);
+    QVERIFY(root->findEntryByPath("/Other/Renamed"));
+    QCOMPARE(run({"mv", "/Work/", "/Renamed Work"}), EXIT_SUCCESS);
+    QCOMPARE(run({"pwd"}), EXIT_SUCCESS);
+    QCOMPARE(m_stdout->readAll(), QByteArray("/Renamed Work\n"));
+    QCOMPARE(run({"cd", "-"}), EXIT_SUCCESS);
+    QCOMPARE(directory, root);
+    QCOMPARE(run({"rm", "Other"}), EXIT_FAILURE);
+    QCOMPARE(run({"rm", "-r", "Other/"}), EXIT_SUCCESS);
+    QVERIFY(!root->findGroupByPath("/Other"));
+    QCOMPARE(run({"rmdir", "Renamed Work"}), EXIT_SUCCESS);
+    QVERIFY(!root->findGroupByPath("/Renamed Work"));
+}
+
 void TestCli::testCommandParsing_data()
 {
     QTest::addColumn<QString>("input");
@@ -2387,6 +2491,8 @@ void TestCli::testCommandParsing_data()
     QTest::newRow("basic") << "hello world" << QStringList({"hello", "world"});
     QTest::newRow("basic escaping") << "hello\\ world" << QStringList({"hello world"});
     QTest::newRow("quoted string") << "\"hello world\"" << QStringList({"hello world"});
+    QTest::newRow("single quotes") << R"(cd '../Work Space\test')" << QStringList({"cd", R"(../Work Space\test)"});
+    QTest::newRow("literal apostrophe") << "cd Someone's" << QStringList({"cd", "Someone's"});
     QTest::newRow("multiple params") << "show Passwords/Internet" << QStringList({"show", "Passwords/Internet"});
     QTest::newRow("quoted string inside param")
         << R"(ls foo\ bar\ baz"quoted")" << QStringList({"ls", "foo bar baz\"quoted\""});

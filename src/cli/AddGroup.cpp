@@ -38,19 +38,24 @@ int AddGroup::executeWithDatabase(QSharedPointer<Database> database, QSharedPoin
     auto& err = Utils::STDERR;
 
     const QStringList args = parser->positionalArguments();
-    const QString& groupPath = args.at(1);
+    const auto groupPath = databasePath(args.at(1));
 
     QStringList pathParts = groupPath.split("/");
     QString groupName = pathParts.takeLast();
     QString parentGroupPath = pathParts.join("/");
 
-    Group* group = database->rootGroup()->findGroupByPath(groupPath);
+    auto* root = database->rootGroup();
+    if (workingGroup && root->findEntryByPath(groupPath)) {
+        err << QObject::tr("An entry already exists at %1.").arg(groupPath) << Qt::endl;
+        return EXIT_FAILURE;
+    }
+    Group* group = root->findGroupByPath(groupPath);
     if (group) {
         err << QObject::tr("Group %1 already exists!").arg(groupPath) << Qt::endl;
         return EXIT_FAILURE;
     }
 
-    Group* parentGroup = database->rootGroup()->findGroupByPath(parentGroupPath);
+    Group* parentGroup = root->findGroupByPath(parentGroupPath);
     if (!parentGroup) {
         err << QObject::tr("Group %1 not found.").arg(parentGroupPath) << Qt::endl;
         return EXIT_FAILURE;

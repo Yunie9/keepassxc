@@ -35,6 +35,7 @@ set(cli_SOURCES
         Generate.cpp
         Help.cpp
         Import.cpp
+        InteractiveCompletion.cpp
         List.cpp
         Merge.cpp
         Move.cpp
@@ -42,7 +43,8 @@ set(cli_SOURCES
         Remove.cpp
         RemoveGroup.cpp
         Search.cpp
-        Show.cpp)
+        Show.cpp
+        WorkingDirectory.cpp)
 
 # text_stream library
 add_library(text_stream STATIC TextStream.cpp)

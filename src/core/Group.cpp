@@ -758,7 +758,7 @@ Group* Group::findGroupByPathRecursive(const QString& groupPath, const QString& 
     return nullptr;
 }
 
-QString Group::print(bool recursive, bool flatten, int depth)
+QString Group::print(bool recursive, bool flatten, int depth, QString (*formatGroupName)(const QString&))
 {
     QString response;
     QString prefix;
@@ -783,9 +783,10 @@ QString Group::print(bool recursive, bool flatten, int depth)
     }
 
     for (Group* innerGroup : children()) {
-        response += prefix + innerGroup->name() + "/\n";
+        const auto name = innerGroup->name() + '/';
+        response += prefix + (formatGroupName ? formatGroupName(name) : name) + '\n';
         if (recursive) {
-            response += innerGroup->print(recursive, flatten, depth + 1);
+            response += innerGroup->print(recursive, flatten, depth + 1, formatGroupName);
         }
     }
 

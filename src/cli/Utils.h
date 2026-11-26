@@ -28,6 +28,7 @@ class Database;
 class Entry;
 class EntryAttributes;
 class FileKey;
+class Group;
 class PasswordKey;
 
 namespace Utils
@@ -44,6 +45,18 @@ namespace Utils
     void setDefaultTextStreams();
     void resetTextStreams();
 
+    enum class TerminalColor
+    {
+        Cyan = 36,
+        Yellow = 33,
+        BrightGreen = 92,
+        BrightMagenta = 95,
+        BrightCyan = 96,
+    };
+
+    bool terminalColorsEnabled();
+    QString colorize(const QString& text, TerminalColor color, bool enabled = true);
+
     void setStdinEcho(bool enable);
     bool loadFileKey(const QString& path, QSharedPointer<FileKey>& fileKey);
     QString getPassword(bool quiet = false);
@@ -55,7 +68,17 @@ namespace Utils
                                             const QString& yubiKeySlot = {},
                                             bool quiet = false);
 
+    struct CommandToken
+    {
+        QString value;
+        qsizetype start;
+        qsizetype end;
+    };
+
+    QList<CommandToken> tokenizeCommand(const QString& command);
     QStringList splitCommandString(const QString& command);
+    QString groupPath(const Group& group);
+    QString absoluteDatabasePath(const Group& directory, const QString& path);
 
     /**
      * If `attributes` contains an attribute named `name` (case-sensitive),

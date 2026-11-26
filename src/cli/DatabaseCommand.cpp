@@ -62,3 +62,8 @@ int DatabaseCommand::execute(const QStringList& arguments)
 
     return executeWithDatabase(db, parser);
 }
+
+QString DatabaseCommand::databasePath(const QString& path) const
+{
+    return workingGroup ? Utils::absoluteDatabasePath(*workingGroup, path) : path;
+}

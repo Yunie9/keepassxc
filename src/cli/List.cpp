@@ -29,14 +29,17 @@ const QCommandLineOption List::RecursiveOption =
 const QCommandLineOption List::FlattenOption =
     QCommandLineOption(QStringList() << "f" << "flatten", QObject::tr("Flattens the output to single lines."));
 
-List::List()
+List::List(bool interactive)
 {
     name = QString("ls");
     description = QObject::tr("List database entries.");
     options.append(List::RecursiveOption);
     options.append(List::FlattenOption);
     optionalArguments.append(
-        {QString("group"), QObject::tr("Path of the group to list. Default is /"), QString("[group]")});
+        {interactive ? "path" : "group",
+         interactive ? QObject::tr("Group or entry path. Defaults to the current group.")
+                     : QObject::tr("Path of the group to list. Default is /"),
+         interactive ? "[path]" : "[group]"});
 }
 
 int List::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<QCommandLineParser> parser)
@@ -47,20 +50,28 @@ int List::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
     const QStringList args = parser->positionalArguments();
     bool recursive = parser->isSet(List::RecursiveOption);
     bool flatten = parser->isSet(List::FlattenOption);
+    const auto directoryColor = +[](const QString& name) {
+        return Utils::colorize(name, Utils::TerminalColor::BrightCyan);
+    };
+    const auto formatGroupName = workingGroup && Utils::terminalColorsEnabled() ? directoryColor : nullptr;
 
-    // No group provided, defaulting to root group.
     if (args.size() == 1) {
-        out << database->rootGroup()->print(recursive, flatten) << Qt::flush;
+        auto* group = workingGroup ? workingGroup : database->rootGroup();
+        out << group->print(recursive, flatten, 0, formatGroupName) << Qt::flush;
         return EXIT_SUCCESS;
     }
 
-    const QString& groupPath = args.at(1);
+    const auto groupPath = databasePath(args.at(1));
     Group* group = database->rootGroup()->findGroupByPath(groupPath);
     if (!group) {
+        if (workingGroup && !args.at(1).endsWith('/') && database->rootGroup()->findEntryByPath(groupPath)) {
+            out << args.at(1) << Qt::endl;
+            return EXIT_SUCCESS;
+        }
         err << QObject::tr("Cannot find group %1.").arg(groupPath) << Qt::endl;
         return EXIT_FAILURE;
     }
 
-    out << group->print(recursive, flatten) << Qt::flush;
+    out << group->print(recursive, flatten, 0, formatGroupName) << Qt::flush;
     return EXIT_SUCCESS;
 }

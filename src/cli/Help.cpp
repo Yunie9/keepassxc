@@ -30,7 +30,7 @@ int Help::execute(const QStringList& arguments)
     auto& out = Utils::STDOUT;
     QSharedPointer<Command> command;
     if (arguments.size() > 1 && (command = Commands::getCommand(arguments.at(1)))) {
-        out << command->getHelpText();
+        out << command->getHelpText(workingGroup);
     } else {
         out << "\n\n" << QObject::tr("Available commands:") << "\n";
         for (auto& cmd : Commands::getCommands()) {

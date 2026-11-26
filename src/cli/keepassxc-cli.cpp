@@ -17,14 +17,18 @@
 
 #include <QCommandLineParser>
 #include <QFileInfo>
+#include <QPointer>
+#include <QRegularExpression>
 
 #include "Command.h"
+#include "InteractiveCompletion.h"
 #include "LineReader.h"
 #include "Open.h"
 #include "Utils.h"
 #include "config-keepassx.h"
 #include "core/Bootstrap.h"
 #include "core/Config.h"
+#include "core/Group.h"
 #include "core/Metadata.h"
 #include "core/Tools.h"
 #include "crypto/Crypto.h"
@@ -47,18 +51,35 @@ int enterInteractiveMode(const QStringList& arguments)
     };
 
     LineReader reader;
-    QSharedPointer<Database> currentDatabase(openCmd.currentDatabase);
+    auto currentDatabase = std::move(openCmd.currentDatabase);
+    QPointer<Group> workingGroup = currentDatabase->rootGroup();
+    bool firstPrompt = true;
+    const bool colors = Utils::terminalColorsEnabled();
+    const auto prompt = Utils::colorize(">", Utils::TerminalColor::BrightGreen, colors) + ' ';
+    static const QRegularExpression controls("[\\x00-\\x1f\\x7f-\\x9f]");
 
     while (true) {
-        QString prompt;
+        QString location;
         if (currentDatabase) {
-            prompt += currentDatabase->metadata()->name();
-            if (prompt.isEmpty()) {
-                prompt += QFileInfo(currentDatabase->filePath()).fileName();
+            auto name = currentDatabase->metadata()->name();
+            if (name.isEmpty()) {
+                name = QFileInfo(currentDatabase->filePath()).fileName();
             }
+            const auto label = '[' + name.replace(controls, "?") + ']';
+            const auto path = Utils::groupPath(*workingGroup).replace(controls, "?");
+            location = Utils::colorize(label, Utils::TerminalColor::BrightMagenta, colors) + ' '
+                       + Utils::colorize(path, Utils::TerminalColor::BrightCyan, colors);
+        } else {
+            location = Utils::colorize(QObject::tr("[No database open]"), Utils::TerminalColor::Yellow, colors);
         }
-        prompt += "> ";
-        QString command = reader.readLine(prompt);
+        if (!firstPrompt) {
+            Utils::STDOUT << '\n';
+        }
+        firstPrompt = false;
+        Utils::STDOUT << location << Qt::endl;
+        const auto command = reader.readLine(prompt, [&workingGroup](const QString& line, qsizetype cursor) {
+            return completeInteractiveCommand(line, cursor, workingGroup.data());
+        });
         if (reader.isFinished()) {
             break;
         }
@@ -76,9 +97,19 @@ int enterInteractiveMode(const QStringList& arguments)
             break;
         }
 
+        const bool wasRecycled = workingGroup && workingGroup->isRecycled();
+        cmd->workingGroup = workingGroup.data();
         cmd->currentDatabase.swap(currentDatabase);
         cmd->execute(args);
         currentDatabase.swap(cmd->currentDatabase);
+        if (!currentDatabase) {
+            workingGroup.clear();
+        } else if (cmd->name == "cd") {
+            workingGroup = cmd->workingGroup;
+        } else if (cmd->name == "open" || !workingGroup || (!wasRecycled && workingGroup->isRecycled())) {
+            workingGroup = currentDatabase->rootGroup();
+        }
+        cmd->workingGroup = nullptr;
     }
 
     if (currentDatabase) {

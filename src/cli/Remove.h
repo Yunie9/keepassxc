@@ -23,7 +23,7 @@
 class Remove : public DatabaseCommand
 {
 public:
-    Remove();
+    explicit Remove(bool interactive = false);
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
 };

@@ -167,7 +167,10 @@ public:
                  Group::CloneFlags groupFlags = Group::CloneDefault) const;
 
     void copyDataFrom(const Group* other);
-    QString print(bool recursive = false, bool flatten = false, int depth = 0);
+    QString print(bool recursive = false,
+                  bool flatten = false,
+                  int depth = 0,
+                  QString (*formatGroupName)(const QString&) = nullptr);
 
     void addEntry(Entry* entry);
     void removeEntry(Entry* entry);

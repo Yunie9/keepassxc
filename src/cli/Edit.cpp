@@ -61,7 +61,7 @@ int Edit::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<
     auto& err = Utils::STDERR;
 
     const QStringList args = parser->positionalArguments();
-    const QString& entryPath = args.at(1);
+    const auto entryPath = databasePath(args.at(1));
 
     // Cannot use those 2 options at the same time!
     if (parser->isSet(Add::GenerateOption) && parser->isSet(Add::PasswordPromptOption)) {

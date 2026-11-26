@@ -23,10 +23,13 @@
 class Move : public DatabaseCommand
 {
 public:
-    Move();
+    explicit Move(bool interactive = false);
     ~Move() override;
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
+
+private:
+    int moveInSession(Database& database, const QString& source, const QString& target);
 };
 
 #endif // KEEPASSXC_MOVE_H

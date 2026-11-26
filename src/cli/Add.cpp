@@ -71,7 +71,7 @@ int Add::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<Q
     auto& err = Utils::STDERR;
 
     const QStringList args = parser->positionalArguments();
-    auto& entryPath = args.at(1);
+    const auto entryPath = databasePath(args.at(1));
 
     // Cannot use those 2 options at the same time!
     if (parser->isSet(Add::GenerateOption) && parser->isSet(Add::PasswordPromptOption)) {
@@ -89,7 +89,12 @@ int Add::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<Q
         }
     }
 
-    Entry* entry = database->rootGroup()->addEntryWithPath(entryPath);
+    auto* root = database->rootGroup();
+    if (workingGroup && (args.at(1).endsWith('/') || root->findGroupByPath(entryPath))) {
+        err << QObject::tr("Cannot create entry at group path %1.").arg(entryPath) << Qt::endl;
+        return EXIT_FAILURE;
+    }
+    Entry* entry = root->addEntryWithPath(entryPath);
     if (!entry) {
         err << QObject::tr("Could not create entry with path %1.").arg(entryPath) << Qt::endl;
         return EXIT_FAILURE;

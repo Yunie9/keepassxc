@@ -46,7 +46,7 @@ int AttachmentExport::executeWithDatabase(QSharedPointer<Database> database, QSh
     auto& err = Utils::STDERR;
 
     auto args = parser->positionalArguments();
-    auto entryPath = args.at(1);
+    const auto entryPath = databasePath(args.at(1));
 
     auto entry = database->rootGroup()->findEntryByPath(entryPath);
     if (!entry) {

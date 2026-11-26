@@ -24,11 +24,14 @@
 #include "core/Global.h"
 #include "core/Group.h"
 
-Search::Search()
+Search::Search(bool interactive)
 {
     name = QString("search");
     description = QObject::tr("Find entries quickly.");
     positionalArguments.append({QString("term"), QObject::tr("Search term."), QString("")});
+    if (interactive) {
+        optionalArguments.append({"group", QObject::tr("Group to search. Defaults to the current group."), "[group]"});
+    }
 }
 
 int Search::executeWithDatabase(QSharedPointer<Database> database, QSharedPointer<QCommandLineParser> parser)
@@ -38,8 +41,18 @@ int Search::executeWithDatabase(QSharedPointer<Database> database, QSharedPointe
 
     const QStringList args = parser->positionalArguments();
 
+    auto* group = workingGroup ? workingGroup : database->rootGroup();
+    if (args.size() > 2) {
+        const auto path = databasePath(args.at(2));
+        group = database->rootGroup()->findGroupByPath(path);
+        if (!group) {
+            err << QObject::tr("Group %1 not found.").arg(path) << Qt::endl;
+            return EXIT_FAILURE;
+        }
+    }
+
     EntrySearcher searcher;
-    auto results = searcher.search(args.at(1), database->rootGroup(), true);
+    auto results = searcher.search(args.at(1), group, true);
     if (results.isEmpty()) {
         err << "No results for that search term." << Qt::endl;
         return EXIT_FAILURE;

@@ -21,6 +21,7 @@
 #include "core/Entry.h"
 #include "core/EntryAttributes.h"
 #include "core/Global.h"
+#include "core/Group.h"
 #include "keys/ChallengeResponseKey.h"
 #include "keys/FileKey.h"
 
@@ -364,34 +365,85 @@ namespace Utils
      * "hello\\ world" -> ["hello world"] (i.e. backslash is an escape character
      * "\"hello world\"" -> ["hello world"]
      */
-    QStringList splitCommandString(const QString& command)
+    QList<CommandToken> tokenizeCommand(const QString& command)
     {
-        QStringList result;
-
-        bool insideQuotes = false;
+        QList<CommandToken> result;
+        QChar quote;
         QString cur;
-        for (int i = 0; i < command.size(); ++i) {
-            QChar c = command[i];
-            if (c == '\\' && i < command.size() - 1) {
+        qsizetype start = 0;
+        for (qsizetype i = 0; i < command.size(); ++i) {
+            const QChar c = command[i];
+            if (c == '\\' && quote != '\'' && i < command.size() - 1) {
                 cur.append(command[i + 1]);
                 ++i;
-            } else if (!insideQuotes && (c == ' ' || c == '\t')) {
-                if (!cur.isEmpty()) {
-                    result.append(cur);
+            } else if (quote.isNull() && (c == ' ' || c == '\t')) {
+                if (i > start) {
+                    result.append({cur, start, i});
                     cur.clear();
                 }
-            } else if (c == '"' && (insideQuotes || i == 0 || command[i - 1].isSpace())) {
-                insideQuotes = !insideQuotes;
+                start = i + 1;
+            } else if (c == quote) {
+                quote = {};
+            } else if (quote.isNull() && (c == '"' || c == '\'') && (i == start || command[i - 1].isSpace())) {
+                quote = c;
             } else {
                 cur.append(c);
             }
         }
 
-        if (!cur.isEmpty()) {
-            result.append(cur);
+        if (command.size() > start) {
+            result.append({cur, start, command.size()});
         }
 
         return result;
+    }
+
+    QStringList splitCommandString(const QString& command)
+    {
+        QStringList result;
+        for (const auto& token : tokenizeCommand(command)) {
+            if (!token.value.isEmpty()) {
+                result.append(token.value);
+            }
+        }
+        return result;
+    }
+
+    QString groupPath(const Group& group)
+    {
+        return '/' + group.hierarchy().mid(1).join('/');
+    }
+
+    bool terminalColorsEnabled()
+    {
+#ifdef Q_OS_UNIX
+        const auto* output = qobject_cast<QFile*>(STDOUT.device());
+        return output && isatty(output->handle()) && isatty(STDIN_FILENO) && !qEnvironmentVariableIsSet("NO_COLOR")
+               && qgetenv("TERM") != "dumb";
+#else
+        return false;
+#endif
+    }
+
+    QString colorize(const QString& text, TerminalColor color, bool enabled)
+    {
+        return enabled ? QStringLiteral("\x1b[%1m%2\x1b[0m").arg(static_cast<int>(color)).arg(text) : text;
+    }
+
+    QString absoluteDatabasePath(const Group& directory, const QString& path)
+    {
+        const auto input = path.startsWith('/') ? path : (groupPath(directory) + '/' + path);
+        QStringList parts;
+        for (const auto& component : input.split('/', Qt::SkipEmptyParts)) {
+            if (component == "..") {
+                if (!parts.isEmpty()) {
+                    parts.removeLast();
+                }
+            } else if (component != ".") {
+                parts.append(component);
+            }
+        }
+        return '/' + parts.join('/');
     }
 
     QString getTopLevelField(const Entry* entry, const QString& fieldName)

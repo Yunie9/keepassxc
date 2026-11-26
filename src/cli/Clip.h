@@ -20,6 +20,8 @@
 
 #include "DatabaseCommand.h"
 
+class Entry;
+
 class Clip : public DatabaseCommand
 {
 public:
@@ -27,6 +29,14 @@ public:
 
     int executeWithDatabase(QSharedPointer<Database> db, QSharedPointer<QCommandLineParser> parser) override;
 
+    static int copyAttribute(const Entry& entry,
+                             const QString& entryPath,
+                             QString attribute,
+                             int timeout,
+                             const Group* workingGroup,
+                             bool quiet);
+
+    static constexpr int DefaultTimeout = 10;
     static const QCommandLineOption AttributeOption;
     static const QCommandLineOption TotpOption;
     static const QCommandLineOption BestMatchOption;

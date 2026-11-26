@@ -23,6 +23,7 @@
 #include "core/Database.h"
 
 class QCommandLineParser;
+class Group;
 
 // At the moment, there's no QT class for the positional arguments
 // like there is for the options (QCommandLineOption).
@@ -42,13 +43,14 @@ public:
     QString name;
     QString description;
     QSharedPointer<Database> currentDatabase;
+    Group* workingGroup = nullptr;
     QList<CommandLineArgument> positionalArguments;
     QList<CommandLineArgument> optionalArguments;
     QList<QCommandLineOption> options;
 
     QString getDescriptionLine();
     QSharedPointer<QCommandLineParser> getCommandLineParser(const QStringList& arguments);
-    QString getHelpText();
+    QString getHelpText(bool inWorkingDirectory = false);
 
     static const QCommandLineOption HelpOption;
     static const QCommandLineOption QuietOption;

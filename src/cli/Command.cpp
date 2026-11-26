@@ -23,6 +23,7 @@
 #include "AttachmentRemove.h"
 #include "Clip.h"
 #include "Close.h"
+#include "DatabaseCommand.h"
 #include "DatabaseCreate.h"
 #include "DatabaseEdit.h"
 #include "DatabaseInfo.h"
@@ -43,6 +44,7 @@
 #include "Search.h"
 #include "Show.h"
 #include "Utils.h"
+#include "WorkingDirectory.h"
 
 #include <QCommandLineParser>
 #include <QFileInfo>
@@ -74,11 +76,14 @@ const QCommandLineOption Command::YubiKeyOption =
 namespace
 {
 
-    QSharedPointer<QCommandLineParser> buildParser(Command* command)
+    QSharedPointer<QCommandLineParser> buildParser(Command* command, bool omitDatabase = false)
     {
         auto parser = QSharedPointer<QCommandLineParser>(new QCommandLineParser());
         parser->setApplicationDescription(command->description);
         for (const CommandLineArgument& positionalArgument : command->positionalArguments) {
+            if (omitDatabase && positionalArgument.name == "database") {
+                continue;
+            }
             parser->addPositionalArgument(
                 positionalArgument.name, positionalArgument.description, positionalArgument.syntax);
         }
@@ -113,9 +118,10 @@ QString Command::getDescriptionLine()
     return response;
 }
 
-QString Command::getHelpText()
+QString Command::getHelpText(bool inWorkingDirectory)
 {
-    auto help = buildParser(this)->helpText();
+    const bool omitDatabase = (workingGroup || inWorkingDirectory) && name != "open" && dynamic_cast<DatabaseCommand*>(this);
+    auto help = buildParser(this, omitDatabase)->helpText();
     // Fix spacing of options parameter
     help.replace(QStringLiteral("[options]"), name + QStringLiteral(" [options]"));
     // Remove application directory from command line example
@@ -176,17 +182,19 @@ namespace Commands
         s_commands.insert(QStringLiteral("estimate"), QSharedPointer<Command>(new Estimate()));
         s_commands.insert(QStringLiteral("generate"), QSharedPointer<Command>(new Generate()));
         s_commands.insert(QStringLiteral("help"), QSharedPointer<Command>(new Help()));
-        s_commands.insert(QStringLiteral("ls"), QSharedPointer<Command>(new List()));
+        s_commands.insert(QStringLiteral("ls"), QSharedPointer<Command>(new List(interactive)));
         s_commands.insert(QStringLiteral("merge"), QSharedPointer<Command>(new Merge()));
         s_commands.insert(QStringLiteral("mkdir"), QSharedPointer<Command>(new AddGroup()));
-        s_commands.insert(QStringLiteral("mv"), QSharedPointer<Command>(new Move()));
+        s_commands.insert(QStringLiteral("mv"), QSharedPointer<Command>(new Move(interactive)));
         s_commands.insert(QStringLiteral("open"), QSharedPointer<Command>(new Open()));
-        s_commands.insert(QStringLiteral("rm"), QSharedPointer<Command>(new Remove()));
+        s_commands.insert(QStringLiteral("rm"), QSharedPointer<Command>(new Remove(interactive)));
         s_commands.insert(QStringLiteral("rmdir"), QSharedPointer<Command>(new RemoveGroup()));
-        s_commands.insert(QStringLiteral("search"), QSharedPointer<Command>(new Search()));
+        s_commands.insert(QStringLiteral("search"), QSharedPointer<Command>(new Search(interactive)));
         s_commands.insert(QStringLiteral("show"), QSharedPointer<Command>(new Show()));
 
         if (interactive) {
+            s_commands.insert(QStringLiteral("cd"), QSharedPointer<Command>(new ChangeDirectory()));
+            s_commands.insert(QStringLiteral("pwd"), QSharedPointer<Command>(new PrintWorkingDirectory()));
             s_commands.insert(QStringLiteral("exit"), QSharedPointer<Command>(new Exit("exit")));
             s_commands.insert(QStringLiteral("quit"), QSharedPointer<Command>(new Exit("quit")));
         } else {
