@@ -8,6 +8,74 @@
 [![Matrix community channel](https://img.shields.io/matrix/keepassxc:matrix.org?label=Community%20channel)](https://app.element.io/#/room/#keepassxc:mozilla.org)
 [![Matrix development channel](https://img.shields.io/matrix/keepassxc-dev:matrix.org?label=Development%20channel)](https://app.element.io/#/room/#keepassxc-dev:mozilla.org)
 
+## Interactive CLI in this fork
+
+The `feature/interactive-completion` branch is based on KeePassXC 2.8.0. It lets you navigate database groups like directories in a shell.
+
+- **Group navigation.** Use `ls`, `cd`, and `pwd` to browse the database. Entry and group commands accept paths relative to the current group or absolute paths from the database root. Use `..` for the parent group and `cd -` to return to the previous group.
+- **Context-aware Tab completion.** Complete commands, options, field names, and paths. A group candidate ends in `/` so you can continue completing within it. When several candidates match, Tab extends their common prefix, then lists and cycles through the candidates.
+- **Two-line prompt.** The first line shows the database name and current group path. The second is for input. Color distinguishes groups, field labels, and clipboard status. Set `NO_COLOR=1` to disable it.
+- **Show and copy.** `show -c` (short for `show --copy`) displays the entry and copies its password. The default summary masks protected fields. `--copy-attribute` copies a named field or the current TOTP. Both `show --copy` and `clip` clear the clipboard after 10 seconds by default. On macOS, press Enter during the countdown to clear it immediately.
+
+### Build on macOS
+
+With Xcode Command Line Tools and Homebrew installed, build the CLI from the fork. This recipe was verified on Apple Silicon. The explicit Readline paths select GNU Readline for context-aware completion.
+
+```sh
+git clone --branch feature/interactive-completion https://github.com/Yunie9/keepassxc.git
+cd keepassxc
+brew install cmake qttools qtsvg botan qrencode minizip readline
+
+readline_prefix="$(brew --prefix readline)"
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
+  -DWITH_APP_BUNDLE=OFF -DKPXC_MINIMAL=ON -DKPXC_FEATURE_DOCS=OFF \
+  -DReadline_INCLUDE_DIR="$readline_prefix/include" \
+  -DReadline_LIBRARY="$readline_prefix/lib/libreadline.dylib"
+cmake --build build --target keepassxc-cli --parallel
+```
+
+See [INSTALL.md](INSTALL.md) for general KeePassXC build instructions and other platforms.
+
+### Use the interactive CLI
+
+Open a database and unlock it when prompted.
+
+```sh
+./build/src/cli/keepassxc-cli open "$HOME/Documents/personal.kdbx"
+```
+
+This example assumes a group named `Work Space` with an entry named `GitHub Work`. Replace the names with ones from your database. Type the commands after `>`.
+
+```text
+[personal.kdbx] /
+> cd "Work Space"
+
+[personal.kdbx] /Work Space
+> pwd
+/Work Space
+
+[personal.kdbx] /Work Space
+> ls
+GitHub Work
+
+[personal.kdbx] /Work Space
+> show -c "GitHub Work"
+```
+
+Try typing `show -c Git` and pressing Tab to complete the entry name. Run `help show` or `help clip` to see the available options.
+
+```text
+show --copy --timeout 20 "GitHub Work"
+show "GitHub Work" --copy-attribute "API Key"
+show "GitHub Work" --copy-attribute totp
+clip "GitHub Work" 20
+```
+
+For a custom field, type the entry path first, then press Tab after `--copy-attribute` and the start of the field name. The `API Key` and `totp` examples require the corresponding field or TOTP setup. Set the timeout to `0` to leave the copied value on the clipboard until you clear or replace it.
+
+## About KeePassXC
+
 [KeePassXC](https://keepassxc.org) is a modern, secure, and open-source password manager that stores and manages your most sensitive information. You can run KeePassXC on Windows, macOS, and Linux systems. KeePassXC is for people with extremely high demands of secure personal data management. It saves many different types of information, such as usernames, passwords, URLs, attachments, and notes in an offline, encrypted file that can be stored in any location, including private and public cloud solutions. For easy identification and management, user-defined titles and icons can be specified for entries. In addition, entries are sorted into customizable groups. An integrated search function allows you to use advanced patterns to easily find any entry in your database. A customizable, fast, and easy-to-use password generator utility allows you to create passwords with any combination of characters or easy to remember passphrases.
 
 ## Quick Start
